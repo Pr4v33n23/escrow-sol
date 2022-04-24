@@ -1,5 +1,11 @@
 // IMPORTANT POINTS //
 
+reference: https://hackmd.io/@ironaddicteddog/solana-anchor-escrow
+
+//initialize instruction is basically like staking. Put your token into a vault (stake)
+//cancel instruction is to tell the program to end your staking. so it will return back the token staked and close the vault which was used for staking.
+//exchange instruction is to swap 2 tokens. from A to taker to vault to taker to B.
+
 
 <'info> means passing lifetime of the reference explicitly.
 prefer Account over  AccountInfo because, the former helps to deserialize the data at convenience.

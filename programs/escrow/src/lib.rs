@@ -17,7 +17,7 @@ pub mod escrow {
 
     pub fn initialize(
         ctx: Context<Initialize>,
-        vault_account: u8,
+        _vault_account_bump: u8,
         initializer_amount: u64,
         taker_amount: u64,
     ) -> Result<()> {
@@ -41,7 +41,7 @@ pub mod escrow {
         ctx.accounts.escrow_account.initializer_amount = initializer_amount;
         ctx.accounts.escrow_account.taker_amount = taker_amount;
 
-        let (vault_authority, vault_account) =
+        let (vault_authority, _vault_authority_bump) =
             Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
 
         token::set_authority(
@@ -59,10 +59,51 @@ pub mod escrow {
     }
 
     pub fn cancel(ctx: Context<Cancel>) -> ProgramResult {
+        let (vault_authority, vault_authority_bump) =
+            Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
+
+        let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_authority_bump]];
+
+        token::transfer(
+            ctx.accounts
+                .into_transfer_to_initializer_context()
+                .with_signer(&[&authority_seeds[..]]),
+            ctx.accounts.escrow_account.initializer_amount,
+        )?;
+
+        token::close_account(
+            ctx.accounts
+                .into_close_context()
+                .with_signer(&[&authority_seeds[..]]),
+        )?;
+
         Ok(())
     }
 
     pub fn exchange(ctx: Context<Exchange>) -> ProgramResult {
+        let (vault_authority, vault_authority_bump) =
+            Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
+
+        let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_authority_bump]];
+
+        token::transfer(
+            ctx.accounts.into_transfer_to_initializer_context(),
+            ctx.accounts.escrow_account.taker_amount,
+        )?;
+
+        token::transfer(
+            ctx.accounts
+                .into_transfer_to_taker_context()
+                .with_signer(&[&authority_seeds[..]]),
+            ctx.accounts.escrow_account.initializer_amount,
+        )?;
+
+        token::close_account(
+            ctx.accounts
+                .into_close_context()
+                .with_signer(&[&authority_seeds[..]]),
+        )?;
+
         Ok(())
     }
 }
@@ -78,16 +119,16 @@ pub struct EscrowAccount {
 
 //INSTRUCTIONS TO THE PROGRAM
 #[derive(Accounts)]
-#[instruction(vault_account: u8, initializer_amount: u64)]
+#[instruction(vault_account_bump: u8, initializer_amount: u64)]
 pub struct Initialize<'info> {
     //Signer of InitialEscrow( escrow means a bond) to be stored in the EscrowAccount
     #[account(mut, signer)]
     pub initializer: AccountInfo<'info>,
     //the account of token for token exchange.
     #[account(mut, constraint = initializer_deposit_token_account.amount >= initializer_amount)]
-    pub initializer_deposit_token_account: AccountInfo<'info>,
+    pub initializer_deposit_token_account: Account<'info, TokenAccount>,
     //the account of token for token exchange.
-    pub initializer_receive_token_account: AccountInfo<'info>,
+    pub initializer_receive_token_account: Account<'info, TokenAccount>,
     //the account of TokenProgram
     pub token_program: AccountInfo<'info>,
     //the account of EscrowAccount
@@ -103,23 +144,55 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct Cancel<'info> {
+    #[account(mut, signer)]
     pub initializer: AccountInfo<'info>,
+
+    #[account(mut)]
     pub initializer_deposit_token_account: AccountInfo<'info>,
+    #[account(mut)]
     pub vault_account: Account<'info, TokenAccount>,
+
     pub vault_authority: AccountInfo<'info>,
+
+    #[account(mut,
+        constraint=escrow_account.initializer_key == *initializer.key,
+        constraint=escrow_account.initializer_deposit_token_account == *initializer_deposit_token_account.to_account_info().key,
+        close = initializer )]
     pub escrow_account: Box<Account<'info, EscrowAccount>>,
     pub token_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
 pub struct Exchange<'info> {
+    #[account(signer)]
     pub taker: AccountInfo<'info>,
+
+    #[account(mut)]
     pub taker_deposit_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
     pub taker_receive_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
     pub initializer_deposit_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
     pub initializer_receive_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
     pub initializer: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        constraint = escrow_account.taker_amount <= taker_deposit_token_account.amount,
+        constraint = escrow_account.initializer_deposit_token_account == *initializer_deposit_token_account.to_account_info().key,
+        constraint = escrow_account.initializer_receive_token_account == *initializer_receive_token_account.to_account_info().key,
+        constraint = escrow_account.initializer_key == *initializer.key,
+        close = initializer
+    )]
     pub escrow_account: Box<Account<'info, EscrowAccount>>,
+
+    #[account(mut)]
     pub vault_account: Account<'info, TokenAccount>,
     pub vault_authority: AccountInfo<'info>,
     pub token_program: AccountInfo<'info>,
