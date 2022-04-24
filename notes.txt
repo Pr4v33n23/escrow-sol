@@ -1,0 +1,5 @@
+// IMPORTANT POINTS //
+
+
+<'info> means passing lifetime of the reference explicitly.
+prefer Account over  AccountInfo because, the former helps to deserialize the data at convenience.
