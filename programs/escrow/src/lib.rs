@@ -59,7 +59,7 @@ pub mod escrow {
     }
 
     pub fn cancel(ctx: Context<Cancel>) -> ProgramResult {
-        let (vault_authority, vault_authority_bump) =
+        let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
 
         let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_authority_bump]];
@@ -81,7 +81,7 @@ pub mod escrow {
     }
 
     pub fn exchange(ctx: Context<Exchange>) -> ProgramResult {
-        let (vault_authority, vault_authority_bump) =
+        let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
 
         let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_authority_bump]];
